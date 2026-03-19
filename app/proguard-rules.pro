@@ -1,0 +1,1 @@
+# Spotik ProGuard rules

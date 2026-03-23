@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Allow cleartext (HTTP) to our API server -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">212.193.26.216</domain>
+    </domain-config>
+</network-security-config>
+

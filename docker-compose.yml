@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: spotik-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: spotik
+      POSTGRES_USER: spotik
+      POSTGRES_PASSWORD: spotik_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spotik"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build: ./server
+    container_name: spotik-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "jdbc:postgresql://postgres:5432/spotik"
+      DATABASE_USER: "spotik"
+      DATABASE_PASSWORD: "spotik_secret"
+      JWT_SECRET: "change-this-to-a-secure-random-secret-in-production"
+
+volumes:
+  pgdata:
+

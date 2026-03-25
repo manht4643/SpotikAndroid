@@ -1,0 +1,96 @@
+workflows:
+  # ─── iOS — Unsigned IPA for AltStore ──────────────────────────────────────
+  ios-altstore:
+    name: iOS Unsigned IPA (AltStore)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      xcode: latest
+      vars:
+        XCODE_PROJECT: Spotik.xcodeproj
+        XCODE_SCHEME: Spotik
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+
+    scripts:
+      - name: Install XcodeGen
+        script: |
+          brew install xcodegen 2>/dev/null || mint install yonaskolb/XcodeGen 2>/dev/null || true
+
+      - name: Generate Xcode project
+        script: |
+          cd $CM_BUILD_DIR/ios
+          xcodegen generate --spec project.yml
+
+      - name: Resolve SPM packages
+        script: |
+          cd $CM_BUILD_DIR/ios
+          xcodebuild -resolvePackageDependencies \
+            -project $XCODE_PROJECT \
+            -scheme $XCODE_SCHEME \
+            | grep -v "^note:" | grep -v "^warning:" || true
+
+      - name: Build unsigned archive
+        script: |
+          cd $CM_BUILD_DIR/ios
+          xcodebuild archive \
+            -project $XCODE_PROJECT \
+            -scheme $XCODE_SCHEME \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath build/Spotik.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ARCHS="arm64" \
+            | xcpretty --color
+
+      - name: Package IPA for AltStore
+        script: |
+          cd $CM_BUILD_DIR/ios
+          mkdir -p build/ipa
+          APP_PATH=$(find build/Spotik.xcarchive -name "*.app" | head -1)
+          mkdir -p /tmp/AltPayload
+          cp -r "$APP_PATH" /tmp/AltPayload/Spotik.app
+          cd /tmp
+          zip -r "$CM_BUILD_DIR/ios/build/ipa/Spotik-unsigned.ipa" AltPayload/
+          rm -rf /tmp/AltPayload
+          echo "IPA ready at: $CM_BUILD_DIR/ios/build/ipa/Spotik-unsigned.ipa"
+
+    artifacts:
+      - ios/build/ipa/*.ipa
+      - ios/build/*.xcarchive
+
+  # ─── Android Debug APK ────────────────────────────────────────────────────
+  android-debug:
+    name: Android Debug APK
+    max_build_duration: 45
+    instance_type: mac_mini_m2
+
+    environment:
+      java: 21
+      vars:
+        PACKAGE_NAME: com.spotik.app
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+
+    scripts:
+      - name: Set Gradle permissions
+        script: chmod +x gradlew
+
+      - name: Build debug APK
+        script: ./gradlew app:assembleDebug --stacktrace
+
+    artifacts:
+      - app/build/outputs/apk/debug/*.apk

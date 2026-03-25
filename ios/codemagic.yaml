@@ -1,0 +1,83 @@
+workflows:
+  ios-unsigned-ipa:
+    name: iOS — Unsigned IPA (AltStore)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      xcode: latest
+      vars:
+        XCODE_PROJECT: Spotik.xcodeproj
+        XCODE_SCHEME: Spotik
+        BUNDLE_ID: com.spotik.app
+
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        - pattern: main
+          include: true
+        - pattern: ios/*
+          include: true
+
+    scripts:
+      - name: Install Mint (package manager)
+        script: |
+          brew install mint || true
+
+      - name: Install XcodeGen
+        script: |
+          mint install yonaskolb/XcodeGen@2.42.0 || brew install xcodegen
+
+      - name: Generate Xcode project
+        script: |
+          cd $CM_BUILD_DIR/ios
+          xcodegen generate --spec project.yml
+
+      - name: Resolve SPM packages
+        script: |
+          cd $CM_BUILD_DIR/ios
+          xcodebuild -resolvePackageDependencies \
+            -project $XCODE_PROJECT \
+            -scheme $XCODE_SCHEME
+
+      - name: Build unsigned archive
+        script: |
+          cd $CM_BUILD_DIR/ios
+          xcodebuild archive \
+            -project $XCODE_PROJECT \
+            -scheme $XCODE_SCHEME \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath build/Spotik.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            ARCHS="arm64"
+
+      - name: Export unsigned IPA
+        script: |
+          cd $CM_BUILD_DIR/ios
+          mkdir -p build/ipa
+
+          # Package the .app directly into an IPA (no entitlements needed for AltStore)
+          APP_PATH=$(find build/Spotik.xcarchive -name "*.app" | head -1)
+          mkdir -p /tmp/Payload
+          cp -r "$APP_PATH" /tmp/Payload/Spotik.app
+          cd /tmp
+          zip -r "$CM_BUILD_DIR/ios/build/ipa/Spotik-unsigned.ipa" Payload/
+          rm -rf /tmp/Payload
+
+    artifacts:
+      - ios/build/ipa/*.ipa
+      - ios/build/Spotik.xcarchive
+
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com
+        notify:
+          success: true
+          failure: true
